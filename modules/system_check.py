@@ -42,6 +42,7 @@ class SystemCheck:
         # 執行各項檢查
         self._check_python_version()
         self._check_platform()
+        self._check_build_tools()
         self._check_packages()
         self._check_gpu()
         self._check_models()
@@ -101,6 +102,79 @@ class SystemCheck:
                 self.warnings.append(f"⚠ 本應用主要在Windows上測試，當前系統: {system}")
         except Exception as e:
             self.warnings.append(f"⚠ 無法檢查操作系統: {e}")
+    
+    def _check_build_tools(self) -> None:
+        """檢查 Visual Studio Build Tools"""
+        try:
+            import subprocess
+            import os
+            
+            # 檢查常見的 VS Build Tools 安裝路徑
+            possible_paths = [
+                r"C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools",
+                r"C:\Program Files\Microsoft Visual Studio\2022\BuildTools",
+                r"C:\Program Files (x86)\Microsoft Visual Studio\2022\Community",
+                r"C:\Program Files\Microsoft Visual Studio\2022\Community",
+                r"C:\Program Files (x86)\Microsoft Visual Studio\2022\Professional",
+                r"C:\Program Files\Microsoft Visual Studio\2022\Professional",
+                r"C:\Program Files (x86)\Microsoft Visual Studio\2022\Enterprise",
+                r"C:\Program Files\Microsoft Visual Studio\2022\Enterprise",
+            ]
+            
+            vs_found = False
+            vs_path = None
+            
+            for path in possible_paths:
+                if os.path.exists(path):
+                    vs_found = True
+                    vs_path = path
+                    break
+            
+            if vs_found:
+                # 檢查是否有 C++ 工具
+                vcvarsall_path = os.path.join(vs_path, "VC", "Auxiliary", "Build", "vcvarsall.bat")
+                if os.path.exists(vcvarsall_path):
+                    self.checks_passed.append(f"✓ Visual Studio Build Tools 已安裝: {vs_path}")
+                    logger.debug(f"VS Build Tools 找到: {vs_path}")
+                else:
+                    self.warnings.append("⚠ 找到 Visual Studio 但可能缺少 C++ 工具")
+                    self.warnings.append("  請確認已安裝「Desktop development with C++」工作負載")
+            else:
+                # 嘗試通過 vswhere 檢查
+                vswhere_path = r"C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe"
+                if os.path.exists(vswhere_path):
+                    try:
+                        result = subprocess.run(
+                            [vswhere_path, "-latest", "-property", "installationPath"],
+                            capture_output=True,
+                            text=True,
+                            timeout=5
+                        )
+                        if result.returncode == 0 and result.stdout.strip():
+                            self.checks_passed.append(f"✓ Visual Studio 已安裝: {result.stdout.strip()}")
+                            logger.debug(f"VS 通過 vswhere 找到")
+                            vs_found = True
+                    except:
+                        pass
+                
+                if not vs_found:
+                    self.checks_failed.append("✗ 未檢測到 Visual Studio Build Tools 2022")
+                    self.warnings.append("")
+                    self.warnings.append("請安裝 Visual Studio Build Tools 2022:")
+                    self.warnings.append("1. 前往: https://visualstudio.microsoft.com/zh-hant/downloads/")
+                    self.warnings.append("2. 下載「Build Tools for Visual Studio 2022」")
+                    self.warnings.append("3. 安裝時選擇「Desktop development with C++」工作負載")
+                    self.warnings.append("4. 確保包含:")
+                    self.warnings.append("   - MSVC v143 - VS 2022 C++ x64/x86 build tools")
+                    self.warnings.append("   - Windows 10/11 SDK")
+                    self.warnings.append("   - C++ CMake tools for Windows")
+                    self.warnings.append("5. 安裝完成後重新啟動電腦")
+                    self.warnings.append("")
+                    logger.error("Visual Studio Build Tools 未安裝")
+                    
+        except Exception as e:
+            self.warnings.append(f"⚠ 無法檢查 Visual Studio Build Tools: {e}")
+            logger.warning(f"VS Build Tools 檢查錯誤: {e}")
     
     def _check_packages(self) -> None:
         """檢查必要的Python套件"""
@@ -177,16 +251,59 @@ class SystemCheck:
             self.checks_passed.append(f"✓ LLM模型已存在: {llm_model_path.name} ({size_mb:.1f}MB)")
             logger.info(f"LLM模型已找到: {size_mb:.1f}MB")
         else:
-            self.checks_failed.append(f"✗ LLM模型不存在: {llm_model_path}")
-            logger.error(f"LLM模型不存在: {llm_model_path}")
+            # 檢查是否存在分割文件
+            split_file_1 = models_dir / "qwen2.5-7b-instruct-q4_k_m-00001-of-00002.gguf"
+            split_file_2 = models_dir / "qwen2.5-7b-instruct-q4_k_m-00002-of-00002.gguf"
             
-            # 提供下載指引
-            self.warnings.append("")
-            self.warnings.append("請下載LLM模型:")
-            self.warnings.append("1. 前往: https://huggingface.co/Qwen/Qwen2.5-7B-Instruct-GGUF")
-            self.warnings.append("2. 下載: qwen2.5-7b-instruct-q4_k_m.gguf")
-            self.warnings.append(f"3. 放置到: {llm_model_path.absolute()}")
-            self.warnings.append("")
+            if split_file_1.exists() and split_file_2.exists():
+                self.checks_failed.append(f"✗ 檢測到分割的模型文件，需要合併")
+                logger.warning("檢測到分割的模型文件")
+                
+                # 提供合併指引
+                self.warnings.append("")
+                self.warnings.append("=== 檢測到分割的模型文件 ===")
+                self.warnings.append("找到以下文件:")
+                self.warnings.append(f"  - {split_file_1.name}")
+                self.warnings.append(f"  - {split_file_2.name}")
+                self.warnings.append("")
+                self.warnings.append("請合併這兩個文件:")
+                self.warnings.append("")
+                self.warnings.append("Windows PowerShell:")
+                self.warnings.append("  cd models")
+                self.warnings.append("  cmd /c copy /b qwen2.5-7b-instruct-q4_k_m-00001-of-00002.gguf + qwen2.5-7b-instruct-q4_k_m-00002-of-00002.gguf qwen2.5-7b-instruct-q4_k_m.gguf")
+                self.warnings.append("")
+                self.warnings.append("或者 Windows 命令提示字元:")
+                self.warnings.append("  cd models")
+                self.warnings.append("  copy /b qwen2.5-7b-instruct-q4_k_m-00001-of-00002.gguf + qwen2.5-7b-instruct-q4_k_m-00002-of-00002.gguf qwen2.5-7b-instruct-q4_k_m.gguf")
+                self.warnings.append("")
+                self.warnings.append("合併完成後，重新啟動應用程式。")
+                self.warnings.append("")
+            elif split_file_1.exists() or split_file_2.exists():
+                self.checks_failed.append(f"✗ 檢測到不完整的分割文件")
+                logger.error("分割文件不完整")
+                
+                self.warnings.append("")
+                self.warnings.append("檢測到不完整的分割文件，請下載完整的兩個文件:")
+                if not split_file_1.exists():
+                    self.warnings.append(f"  缺少: {split_file_1.name}")
+                if not split_file_2.exists():
+                    self.warnings.append(f"  缺少: {split_file_2.name}")
+                self.warnings.append("")
+            else:
+                self.checks_failed.append(f"✗ LLM模型不存在: {llm_model_path.name}")
+                logger.error(f"LLM模型不存在: {llm_model_path}")
+                
+                # 提供下載指引
+                self.warnings.append("")
+                self.warnings.append("請下載LLM模型:")
+                self.warnings.append("1. 前往: https://huggingface.co/Qwen/Qwen2.5-7B-Instruct-GGUF")
+                self.warnings.append("2. 下載以下文件（注意：可能是分割文件）:")
+                self.warnings.append("   - qwen2.5-7b-instruct-q4_k_m-00001-of-00002.gguf")
+                self.warnings.append("   - qwen2.5-7b-instruct-q4_k_m-00002-of-00002.gguf")
+                self.warnings.append("   （或單個文件: qwen2.5-7b-instruct-q4_k_m.gguf，如果有的話）")
+                self.warnings.append("3. 放置到: models/ 目錄")
+                self.warnings.append("4. 如果是分割文件，需要合併（見上方說明）")
+                self.warnings.append("")
         
         # Whisper模型會自動下載，只需提示
         whisper_dir = models_dir / "whisper"

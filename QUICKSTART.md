@@ -7,11 +7,24 @@
 確保你已安裝：
 - Python 3.10 或更高版本
 - NVIDIA GPU 驅動（用於 GPU 加速）
+- **Visual Studio Build Tools 2022**（重要！）
 
 檢查 Python 版本：
 ```bash
 python --version
 ```
+
+### 步驟 1.5: 安裝 Visual Studio Build Tools 2022
+
+⚠️ **這是必需的！** llama-cpp-python 需要 C++ 編譯器。
+
+**快速安裝：**
+1. 下載: https://visualstudio.microsoft.com/zh-hant/downloads/
+2. 選擇「Build Tools for Visual Studio 2022」
+3. 安裝時勾選「Desktop development with C++」
+4. 重新啟動電腦
+
+詳細說明請參閱 README.md。
 
 ### 步驟 2: 安裝依賴
 
@@ -22,16 +35,51 @@ pip install -r requirements.txt
 
 ### 步驟 3: 下載 LLM 模型
 
-1. 前往 https://huggingface.co/Qwen/Qwen2.5-7B-Instruct-GGUF
-2. 下載 `qwen2.5-7b-instruct-q4_k_m.gguf` (約 4.4GB)
-3. 將文件放入 `models/` 目錄
+⭐ **推薦方法：使用自動下載工具**
 
-驗證模型位置：
+只需雙擊 `models/download_model.bat`，腳本會自動：
+- ✅ 安裝 Hugging Face CLI
+- ✅ 讓您選擇模型（7B / 3B / 1.5B）
+- ✅ 自動下載模型（正確處理分割文件）
+- ✅ 自動更新 config.json
+
+**操作步驟：**
+1. 雙擊 `models/download_model.bat`
+2. 按照提示選擇模型（建議選擇 1 = 7B 模型）
+3. 確認下載
+4. 等待完成（會顯示進度）
+
+**模型選項說明：**
+
+| 選項 | 模型 | 大小 | 顯存 | 品質 | 適用場景 |
+|------|------|------|------|------|----------|
+| **1** | **Qwen2.5-7B** | 4.4GB | 5-6GB | 最佳 | **RTX 4070 8GB（推薦）** |
+| 2 | Qwen2.5-3B | 2.0GB | 2-3GB | 良好 | 顯存不足或追求速度 |
+| 3 | Qwen2.5-1.5B | 1.0GB | 1-2GB | 尚可 | 低顯存或快速測試 |
+
+---
+
+<details>
+<summary>📌 手動下載方法（點擊展開，不推薦）</summary>
+
+**使用 Hugging Face CLI：**
+
+```bash
+# 安裝 CLI
+pip install -U "huggingface_hub[cli]"
+
+# 下載 7B 模型
+huggingface-cli download Qwen/Qwen2.5-7B-Instruct-GGUF qwen2.5-7b-instruct-q4_k_m.gguf --local-dir models --local-dir-use-symlinks False
+
+# 或下載 3B 模型
+huggingface-cli download Qwen/Qwen2.5-3B-Instruct-GGUF qwen2.5-3b-instruct-q4_k_m.gguf --local-dir models --local-dir-use-symlinks False
 ```
-ProjectYLT/
-└── models/
-    └── qwen2.5-7b-instruct-q4_k_m.gguf  ← 確保文件在這裡
-```
+
+**從網頁下載（不推薦，會遇到分割文件問題）：**
+
+不建議手動從網頁下載，因為會遇到文件分割和合併的問題。請使用自動下載工具。
+
+</details>
 
 ### 步驟 4: 啟動應用程式
 
@@ -49,11 +97,19 @@ pythonw main.pyw
 
 ## 常見首次啟動問題
 
-### ❌ "模型文件不存在"
+### ❌ "模型文件不存在" 或 載入模型錯誤
 
-**解決方法**:
-- 確認 LLM 模型已下載到 `models/` 目錄
-- 檢查文件名是否正確
+**最佳解決方法**:
+1. **雙擊 `models/download_model.bat`** 使用自動下載工具
+2. 選擇模型（建議選擇 1 = 7B 模型）
+3. 等待下載完成
+4. 重新啟動應用程式
+
+**正確的合併方法**（根據[官方文檔](https://huggingface.co/Qwen/Qwen2.5-7B-Instruct-GGUF)）:
+- 需要使用 `llama-gguf-split --merge` 工具
+- 這是 llama.cpp 的官方合併工具
+- Windows 的 `copy /b` 命令**無法**正確合併 GGUF 文件
+- 自動下載工具會處理合併（如果已安裝 llama.cpp）
 
 ### ❌ "套件未安裝: xxx"
 
@@ -61,6 +117,24 @@ pythonw main.pyw
 ```bash
 pip install -r requirements.txt --upgrade
 ```
+
+### ❌ "未檢測到 Visual Studio Build Tools 2022"
+
+**解決方法**:
+1. 下載並安裝 Visual Studio Build Tools 2022
+2. 確保選擇「Desktop development with C++」工作負載
+3. 重新啟動電腦
+4. 重新運行應用程式
+
+### ❌ llama-cpp-python 編譯錯誤
+
+**解決方法**:
+1. 確認 Visual Studio Build Tools 已安裝
+2. 重新啟動電腦
+3. 使用預編譯版本：
+   ```bash
+   pip install llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu122
+   ```
 
 ### ❌ "CUDA out of memory"
 

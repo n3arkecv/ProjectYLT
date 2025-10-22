@@ -13,22 +13,64 @@
 - **模型名稱**: Qwen2.5-7B-Instruct (GGUF 4-bit量化)
 - **下載來源**: [Hugging Face](https://huggingface.co/Qwen/Qwen2.5-7B-Instruct-GGUF)
 - **所需文件**: `qwen2.5-7b-instruct-q4_k_m.gguf`
-- **文件大小**: 約 4.4GB
+- **文件大小**: 約 4.4GB（分割為兩個文件）
 - **顯存需求**: 約 5-6GB
 
 ### 下載步驟
 
-1. 前往 Hugging Face 模型頁面:
-   ```
-   https://huggingface.co/Qwen/Qwen2.5-7B-Instruct-GGUF
-   ```
+#### 🌟 推薦方法：使用自動下載工具
 
-2. 下載文件 `qwen2.5-7b-instruct-q4_k_m.gguf`
+**最簡單的方式：** 直接雙擊本目錄下的 `download_model.bat`
 
-3. 將下載的文件放置在此目錄下:
-   ```
-   ProjectYLT/models/qwen2.5-7b-instruct-q4_k_m.gguf
-   ```
+這個工具會自動：
+1. ✅ 安裝 Hugging Face CLI
+2. ✅ 讓您選擇模型（7B / 3B / 1.5B）
+3. ✅ 自動下載模型（正確處理分割文件）
+4. ✅ 自動更新 config.json
+
+**模型選擇建議：**
+
+| 模型 | 大小 | 顯存 | 品質 | 適用場景 |
+|------|------|------|------|----------|
+| **Qwen2.5-7B** | 4.4GB | 5-6GB | 最佳 | **RTX 4070 8GB（推薦）** |
+| Qwen2.5-3B | 2.0GB | 2-3GB | 良好 | 顯存不足或追求速度 |
+| Qwen2.5-1.5B | 1.0GB | 1-2GB | 尚可 | 低顯存或快速測試 |
+
+#### 📦 手動下載方法（進階用戶）
+
+**方法 1：使用 Hugging Face CLI（推薦）**
+
+```bash
+# 安裝 CLI
+pip install -U "huggingface_hub[cli]"
+
+# 下載 7B 模型
+huggingface-cli download Qwen/Qwen2.5-7B-Instruct-GGUF qwen2.5-7b-instruct-q4_k_m.gguf --local-dir . --local-dir-use-symlinks False
+
+# 或下載 3B 模型
+huggingface-cli download Qwen/Qwen2.5-3B-Instruct-GGUF qwen2.5-3b-instruct-q4_k_m.gguf --local-dir . --local-dir-use-symlinks False
+
+# 或下載 1.5B 模型
+huggingface-cli download Qwen/Qwen2.5-1.5B-Instruct-GGUF qwen2.5-1.5b-instruct-q4_k_m.gguf --local-dir . --local-dir-use-symlinks False
+```
+
+**方法 2：手動合併分割文件**
+
+如果下載了分割文件，需要使用 `llama-gguf-split` 工具合併：
+
+```bash
+# 使用 llama-gguf-split 合併（官方方法）
+llama-gguf-split --merge qwen2.5-7b-instruct-q4_k_m-00001-of-00002.gguf qwen2.5-7b-instruct-q4_k_m.gguf
+```
+
+或直接執行提供的批次文件：
+```
+雙擊 models/merge_with_llama_tool.bat
+```
+
+**獲取 llama-gguf-split 工具：**
+- 從 [llama.cpp releases](https://github.com/ggerganov/llama.cpp/releases) 下載
+- 或安裝：`pip install llama-cpp-python`（包含此工具）
 
 ### 替代模型（如果顯存不足）
 

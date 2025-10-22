@@ -196,6 +196,10 @@ class Application:
         """模型載入進度"""
         self.main_window.set_status(message)
         logger.info(message)
+
+        # 如果是錯誤消息，也記錄為錯誤級別
+        if "失敗" in message or "錯誤" in message:
+            logger.error(message)
     
     def _on_models_loaded(self, success: bool) -> None:
         """模型載入完成"""

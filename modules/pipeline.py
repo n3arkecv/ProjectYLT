@@ -242,9 +242,6 @@ class PipelineBuilder:
                 n_ctx=config.get("models.llm_n_ctx", 2048)
             )
             
-            # 設置上下文管理器的LLM引用
-            context_manager.set_llm(llm_module)
-            
             # 創建處理器
             stt_processor = STTProcessor(stt_module)
             llm_processor = LLMProcessor(llm_module, context_manager)

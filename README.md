@@ -23,43 +23,115 @@ YouTube直播即時翻譯應用程式
 - **作業系統**: Windows 10/11
 - **Python**: 3.10 或更高版本
 - **CUDA**: 建議安裝最新版本（用於GPU加速）
+- **Visual Studio Build Tools 2022**: 編譯 llama-cpp-python 所需（見下方安裝說明）
 
 ## 安裝步驟
 
+### 0. 安裝 Visual Studio Build Tools 2022（重要！）
+
+**為什麼需要？** llama-cpp-python 需要 C++ 編譯器才能正確安裝和運行。
+
+**安裝步驟：**
+
+1. 下載 Visual Studio Build Tools 2022:
+   - 前往: https://visualstudio.microsoft.com/zh-hant/downloads/
+   - 滾動到「所有下載」→「Tools for Visual Studio」
+   - 下載「Build Tools for Visual Studio 2022」
+
+2. 運行安裝程式，選擇以下工作負載：
+   - ✅ **Desktop development with C++**（使用 C++ 的桌面開發）
+   
+3. 在右側「安裝詳細資料」中，確保勾選：
+   - ✅ MSVC v143 - VS 2022 C++ x64/x86 build tools
+   - ✅ Windows 10/11 SDK
+   - ✅ C++ CMake tools for Windows
+
+4. 點擊「安裝」並等待完成（可能需要 5-10GB 空間）
+
+5. 安裝完成後，**重新啟動電腦**
+
+**已經安裝 Visual Studio 2022？** 如果你已經安裝了完整版的 Visual Studio 2022，且包含 C++ 開發工具，則無需另外安裝 Build Tools。
+
 ### 1. 安裝Python依賴
 
+**步驟 1**: 安裝基礎依賴
 ```bash
 pip install -r requirements.txt
 ```
 
-**注意**: 如果需要GPU支持，請安裝支援CUDA的llama-cpp-python版本：
+**步驟 2**: 安裝 llama-cpp-python（GPU 加速版本）
 
-```bash
+⚠️ **重要**: 請先確認已安裝 Visual Studio Build Tools 2022（見上方步驟 0）
+
+根據你的 CUDA 版本選擇安裝命令：
+
 # 卸載CPU版本
 pip uninstall llama-cpp-python -y
 
-# 安裝CUDA版本（根據你的CUDA版本選擇）
-# CUDA 12.x
+```bash
+# 檢查 CUDA 版本
+nvidia-smi
+
+# CUDA 12.x 或 13.x（推薦）
 pip install llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu122
 
 # CUDA 11.x
 pip install llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu118
 ```
 
+**注意**: 
+- CUDA 13.0 用戶請使用 CUDA 12.x 版本（向後兼容）
+- 如果安裝過程中出現編譯錯誤，請確認 Visual Studio Build Tools 已正確安裝
+
 ### 2. 下載模型
 
 #### Whisper模型（自動下載）
 首次運行時會自動下載，無需手動操作。
 
-#### LLM模型（必須手動下載）
+#### LLM模型下載
 
-1. 前往 [Hugging Face](https://huggingface.co/Qwen/Qwen2.5-7B-Instruct-GGUF)
-2. 下載 `qwen2.5-7b-instruct-q4_k_m.gguf` (~4.4GB)
-3. 將文件放置在 `models/` 目錄下
+**推薦方法：使用自動下載工具** ⭐
 
-**如果顯存不足**，可以使用較小的模型：
-- Qwen2.5-3B-Instruct (Q4_K_M): ~2GB 顯存
-- Qwen2.5-1.5B-Instruct (Q4_K_M): ~1GB 顯存
+雙擊 `models/download_model.bat`，腳本會：
+- 自動安裝 Hugging Face CLI
+- 讓您選擇模型（7B / 3B / 1.5B）
+- 自動下載並正確處理分割文件
+- 自動更新配置
+
+**模型選擇建議：**
+- **Qwen2.5-7B** (4.4GB): 最佳翻譯品質，適合 RTX 4070 8GB
+- **Qwen2.5-3B** (2.0GB): 良好品質，更快速度
+- **Qwen2.5-1.5B** (1.0GB): 基本品質，最快速度
+
+**手動下載方法：**
+
+如果自動工具無法使用，請使用 Hugging Face CLI：
+
+```bash
+# 安裝 CLI
+pip install -U "huggingface_hub[cli]"
+
+# 下載 7B 模型（推薦）
+hf download Qwen/Qwen2.5-7B-Instruct-GGUF --include "*q4_k_m*.gguf" --local-dir models
+
+# 或 3B 模型
+hf download Qwen/Qwen2.5-3B-Instruct-GGUF --include "*q4_k_m*.gguf" --local-dir models
+```
+
+**如果下載了分割文件，需要合併：**
+
+根據 [官方文檔](https://huggingface.co/Qwen/Qwen2.5-7B-Instruct-GGUF)，使用 `llama-gguf-split` 工具：
+
+```bash
+# 進入 models 目錄
+cd models
+
+# 使用 llama-gguf-split 合併
+llama-gguf-split --merge qwen2.5-7b-instruct-q4_k_m-00001-of-00002.gguf qwen2.5-7b-instruct-q4_k_m.gguf
+
+# 或使用提供的批次文件
+# 雙擊 models/merge_with_llama_tool.bat
+```
 
 詳細說明請參閱 `models/README.md`
 

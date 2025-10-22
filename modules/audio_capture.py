@@ -10,6 +10,7 @@ import queue
 import time
 from typing import Optional, List, Dict, Callable
 from utils.logger import logger
+from scipy import signal
 
 
 class AudioCapture:
@@ -37,11 +38,81 @@ class AudioCapture:
         
         self.buffer = np.array([], dtype=np.float32)
         
+        # 音訊處理參數
+        self.source_sample_rate = None  # 來源音訊的實際採樣率
+        self.source_channels = None     # 來源音訊的實際通道數
+        self.resample_filter = None     # 重採樣濾波器
+        
         logger.info(f"音訊捕獲器初始化: 採樣率={sample_rate}Hz, 塊大小={chunk_duration}秒")
+    
+    def _setup_audio_processing(self, source_rate: int, source_channels: int) -> None:
+        """
+        設置音訊處理參數
+        
+        Args:
+            source_rate: 來源音訊採樣率
+            source_channels: 來源音訊通道數
+        """
+        self.source_sample_rate = source_rate
+        self.source_channels = source_channels
+        
+        # 如果來源採樣率與目標不同，設置重採樣濾波器
+        if source_rate != self.sample_rate:
+            # 計算重採樣比例
+            resample_ratio = self.sample_rate / source_rate
+            
+            # 設計抗混疊濾波器
+            nyquist = min(source_rate, self.sample_rate) / 2
+            cutoff = 0.8 * nyquist  # 80%的奈奎斯特頻率
+            
+            # 設計低通濾波器
+            self.resample_filter = signal.butter(4, cutoff, btype='low', fs=source_rate, output='sos')
+            
+            logger.info(f"設置音訊重採樣: {source_rate}Hz -> {self.sample_rate}Hz, 通道數: {source_channels} -> 1")
+        else:
+            self.resample_filter = None
+            logger.info(f"無需重採樣: {source_rate}Hz, 通道數: {source_channels} -> 1")
+    
+    def _process_audio_data(self, raw_data: np.ndarray) -> np.ndarray:
+        """
+        處理原始音訊數據
+        
+        Args:
+            raw_data: 原始音訊數據
+            
+        Returns:
+            處理後的音訊數據
+        """
+        # 如果是多聲道，轉換為單聲道（取平均值）
+        if len(raw_data.shape) > 1 and raw_data.shape[1] > 1:
+            processed_data = np.mean(raw_data, axis=1)
+        else:
+            processed_data = raw_data.flatten()
+        
+        # 如果採樣率不同，進行重採樣
+        if self.resample_filter is not None and self.source_sample_rate != self.sample_rate:
+            # 使用sosfilt進行濾波
+            filtered_data = signal.sosfilt(self.resample_filter, processed_data)
+            
+            # 重採樣
+            num_samples = int(len(filtered_data) * self.sample_rate / self.source_sample_rate)
+            processed_data = signal.resample(filtered_data, num_samples)
+        else:
+            processed_data = processed_data
+        
+        # 確保數據類型為float32
+        processed_data = processed_data.astype(np.float32)
+        
+        # 正規化音量（避免削波）
+        max_val = np.max(np.abs(processed_data))
+        if max_val > 0:
+            processed_data = processed_data / max_val * 0.8
+        
+        return processed_data
     
     def list_devices(self) -> List[Dict]:
         """
-        列出所有WASAPI loopback設備
+        列出所有音訊設備
         
         Returns:
             設備信息列表
@@ -49,23 +120,23 @@ class AudioCapture:
         devices = []
         
         try:
-            # 查找所有loopback設備
-            wasapi_info = self.audio.get_host_api_info_by_type(pyaudio.paWASAPI)
+            # 列出所有設備
+            device_count = self.audio.get_device_count()
             
-            for i in range(wasapi_info['deviceCount']):
-                device_info = self.audio.get_device_info_by_host_api_device_index(
-                    wasapi_info['index'], i
-                )
+            for i in range(device_count):
+                device_info = self.audio.get_device_info_by_index(i)
                 
-                # 只列出loopback設備（輸出設備）
-                if device_info['maxOutputChannels'] > 0:
+                # 只列出有輸入能力的設備
+                if device_info['maxInputChannels'] > 0:
                     devices.append({
                         'index': i,
                         'name': device_info['name'],
-                        'channels': device_info['maxOutputChannels'],
-                        'sample_rate': int(device_info['defaultSampleRate'])
+                        'input_channels': device_info['maxInputChannels'],
+                        'output_channels': device_info['maxOutputChannels'],
+                        'sample_rate': int(device_info['defaultSampleRate']),
+                        'host_api': device_info['hostApi']
                     })
-                    logger.debug(f"找到設備: {device_info['name']}")
+                    logger.debug(f"找到設備: {device_info['name']} (輸入通道: {device_info['maxInputChannels']})")
             
         except Exception as e:
             logger.error(f"列出音訊設備時發生錯誤: {e}")
@@ -83,38 +154,22 @@ class AudioCapture:
             是否設置成功
         """
         try:
-            wasapi_info = self.audio.get_host_api_info_by_type(pyaudio.paWASAPI)
-            
-            # 如果device_index為0，使用預設loopback設備
+            # 如果device_index為0，使用預設輸入設備
             if device_index == 0:
-                # 獲取預設輸出設備
-                default_device = self.audio.get_default_output_device_info()
-                device_name = default_device['name']
-                
-                # 查找對應的loopback設備
-                for i in range(wasapi_info['deviceCount']):
-                    device_info = self.audio.get_device_info_by_host_api_device_index(
-                        wasapi_info['index'], i
-                    )
-                    if device_info['name'] == device_name and device_info['maxOutputChannels'] > 0:
-                        # 查找loopback版本（通常名稱相同但isLoopback為True）
-                        if device_info.get('isLoopbackDevice', False):
-                            self.device_info = device_info
-                            logger.info(f"已設置音訊設備: {device_info['name']}")
-                            return True
-                
-                # 如果沒有找到明確的loopback標記，使用預設設備作為loopback
-                self.device_info = default_device
-                logger.info(f"使用預設設備作為loopback: {default_device['name']}")
-                return True
+                # 獲取預設輸入設備
+                self.device_info = self.audio.get_default_input_device_info()
+                logger.info(f"使用預設輸入設備: {self.device_info['name']}")
             else:
                 # 使用指定索引的設備
-                device_info = self.audio.get_device_info_by_host_api_device_index(
-                    wasapi_info['index'], device_index
-                )
-                self.device_info = device_info
-                logger.info(f"已設置音訊設備: {device_info['name']}")
-                return True
+                self.device_info = self.audio.get_device_info_by_index(device_index)
+                logger.info(f"已設置音訊設備: {self.device_info['name']}")
+            
+            # 設置音訊處理參數
+            self._setup_audio_processing(
+                int(self.device_info['defaultSampleRate']),
+                self.device_info['maxInputChannels']
+            )
+            return True
                 
         except Exception as e:
             logger.error(f"設置音訊設備時發生錯誤: {e}")
@@ -139,16 +194,22 @@ class AudioCapture:
             return False
         
         try:
-            # 打開音訊流
+            # 使用設備的原始通道數和採樣率開啟音訊流
+            device_channels = self.device_info['maxInputChannels'] if self.device_info else 1
+            device_sample_rate = int(self.device_info['defaultSampleRate']) if self.device_info else 44100
+            
+            logger.info(f"嘗試開啟音訊流: 設備通道數={device_channels}, 設備採樣率={device_sample_rate}Hz")
+            
             self.stream = self.audio.open(
                 format=pyaudio.paFloat32,
-                channels=1,  # 單聲道
-                rate=self.sample_rate,
+                channels=device_channels,  # 使用設備的原始通道數
+                rate=device_sample_rate,    # 使用設備的原始採樣率
                 input=True,
                 frames_per_buffer=1024,
-                input_device_index=self.device_info['index'] if self.device_info else None,
-                as_loopback=True  # 啟用loopback模式
+                input_device_index=self.device_info['index'] if self.device_info else None
             )
+
+            logger.info("音訊流開啟成功")
             
             self.is_running = True
             self.buffer = np.array([], dtype=np.float32)
@@ -193,10 +254,21 @@ class AudioCapture:
                 if self.stream and self.stream.is_active():
                     # 讀取音訊數據
                     data = self.stream.read(1024, exception_on_overflow=False)
-                    audio_data = np.frombuffer(data, dtype=np.float32)
+                    
+                    # 根據設備通道數重新整形數據
+                    if self.source_channels and self.source_channels > 1:
+                        # 多聲道數據
+                        audio_data = np.frombuffer(data, dtype=np.float32)
+                        audio_data = audio_data.reshape(-1, self.source_channels)
+                    else:
+                        # 單聲道數據
+                        audio_data = np.frombuffer(data, dtype=np.float32)
+                    
+                    # 處理音訊數據（重採樣、通道轉換等）
+                    processed_data = self._process_audio_data(audio_data)
                     
                     # 添加到緩衝區
-                    self.buffer = np.concatenate([self.buffer, audio_data])
+                    self.buffer = np.concatenate([self.buffer, processed_data])
                     
                     # 當緩衝區達到目標大小時，放入隊列
                     if len(self.buffer) >= self.chunk_size:
